@@ -320,7 +320,7 @@ void Bus::process_events() {
   ESP_LOGI(TAG, "Event bus task started");
 
   while (running_) {
-    if (xQueueReceive(event_queue_, &internal_event, pdMS_TO_TICKS(100)) ==
+    if (xQueueReceive(event_queue_, &internal_event, portMAX_DELAY) ==
         pdTRUE) {
       if (internal_event.event.payload_size > 0) {
         internal_event.event.payload = internal_event.payload_buffer.data();
