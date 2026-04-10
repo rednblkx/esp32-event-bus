@@ -333,19 +333,23 @@ void Bus::process_events() {
                topic_name ? static_cast<int>(topic_name->length()) : 7,
                topic_name ? topic_name->data() : "UNKNOWN");
 
+      std::vector<Subscriber> active_subscribers;
       if (xSemaphoreTakeRecursive(mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
         int topic_idx = find_topic_index_by_id(event.topic);
 
         if (topic_idx >= 0) {
-          // Notify all subscribers
-          for (auto &sub : subscribers_[topic_idx]) {
+          for (const auto &sub : subscribers_[topic_idx]) {
             if (sub.active && sub.callback) {
-              sub.callback(event, sub.context);
+              active_subscribers.push_back(sub);
             }
           }
         }
 
         xSemaphoreGiveRecursive(mutex_);
+      }
+
+      for (const auto &sub : active_subscribers) {
+        sub.callback(event, sub.context);
       }
     }
   }
