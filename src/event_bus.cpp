@@ -77,7 +77,8 @@ esp_err_t Bus::init() {
   return ESP_OK;
 }
 
-TopicHandle Bus::register_topic(std::string_view topic_name) {
+TopicHandle Bus::register_topic(std::string_view topic_name,
+                                           bool cache_last_message) {
   if (topic_name.empty()) {
     ESP_LOGE(TAG, "Invalid topic name");
     return INVALID_TOPIC;
@@ -118,6 +119,7 @@ TopicHandle Bus::register_topic(std::string_view topic_name) {
   it->set_name(topic_name);
   it->id = new_id;
   it->active = true;
+  it->cache_last_message = cache_last_message;
 
   xSemaphoreGiveRecursive(mutex_);
 
@@ -211,6 +213,18 @@ SubscriberHandle Bus::subscribe(TopicHandle topic, SubscriberCallback callback,
              static_cast<int>(topics_[topic_idx].get_name().length()),
              topics_[topic_idx].get_name().data());
     return SubscriberHandle{};
+  }
+
+  if (topics_[topic_idx].cached_event.has_value()) {
+    auto &cached = topics_[topic_idx].cached_event.value();
+    if (cached.event.payload_size > 0) {
+      cached.event.payload = cached.payload_buffer.data();
+    }
+    ESP_LOGI(TAG, "Delivering cached message to new subscriber on topic: '%.*s'",
+             static_cast<int>(topics_[topic_idx].get_name().length()),
+             topics_[topic_idx].get_name().data());
+    sub->callback(cached.event, sub->context);
+    topics_[topic_idx].cached_event = std::nullopt;
   }
 
   ESP_LOGI(TAG, "Subscriber added to topic: '%.*s'",
@@ -334,8 +348,11 @@ void Bus::process_events() {
                topic_name ? topic_name->data() : "UNKNOWN");
 
       std::vector<Subscriber> active_subscribers;
+      int topic_idx = -1;
+      bool should_cache = false;
+
       if (xSemaphoreTakeRecursive(mutex_, pdMS_TO_TICKS(100)) == pdTRUE) {
-        int topic_idx = find_topic_index_by_id(event.topic);
+        topic_idx = find_topic_index_by_id(event.topic);
 
         if (topic_idx >= 0) {
           for (const auto &sub : subscribers_[topic_idx]) {
@@ -343,6 +360,14 @@ void Bus::process_events() {
               active_subscribers.push_back(sub);
             }
           }
+          should_cache = topics_[topic_idx].cache_last_message;
+        }
+
+        if (active_subscribers.empty() && should_cache && topic_idx >= 0) {
+          topics_[topic_idx].cached_event = internal_event;
+          ESP_LOGD(TAG, "Cached message for topic '%.*s' (no subscribers)",
+                   static_cast<int>(topics_[topic_idx].get_name().length()),
+                   topics_[topic_idx].get_name().data());
         }
 
         xSemaphoreGiveRecursive(mutex_);

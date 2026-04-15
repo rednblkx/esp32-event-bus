@@ -59,7 +59,8 @@ public:
 
   esp_err_t init();
 
-  [[nodiscard]] TopicHandle register_topic(std::string_view topic_name);
+  [[nodiscard]] TopicHandle register_topic(std::string_view topic_name,
+                                           bool cache_last_message = false);
 
   [[nodiscard]] std::optional<TopicHandle>
   get_topic(std::string_view topic_name) const;
@@ -85,10 +86,17 @@ private:
   Bus();
   ~Bus();
 
+  struct InternalEvent {
+    Event event{};
+    std::array<uint8_t, PAYLOAD_BUFFER_SIZE> payload_buffer{};
+  };
+
   struct TopicEntry {
     std::array<char, MAX_TOPIC_NAME_LEN> name{};
     TopicHandle id{INVALID_TOPIC};
     bool active{false};
+    bool cache_last_message{false};
+    std::optional<InternalEvent> cached_event{std::nullopt};
 
     void set_name(std::string_view n) {
       size_t len = std::min(n.length(), MAX_TOPIC_NAME_LEN - 1);
@@ -104,11 +112,6 @@ private:
     SubscriberCallback callback{nullptr};
     void *context{nullptr};
     bool active{false};
-  };
-
-  struct InternalEvent {
-    Event event{};
-    std::array<uint8_t, PAYLOAD_BUFFER_SIZE> payload_buffer{};
   };
 
   static void event_task(void *pvParameters);
