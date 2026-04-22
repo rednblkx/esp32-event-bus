@@ -347,7 +347,8 @@ void Bus::process_events() {
                topic_name ? static_cast<int>(topic_name->length()) : 7,
                topic_name ? topic_name->data() : "UNKNOWN");
 
-      std::vector<Subscriber> active_subscribers;
+      std::array<Subscriber, MAX_SUBSCRIBERS_PER_TOPIC> active_subscribers;
+      size_t active_count = 0;
       int topic_idx = -1;
       bool should_cache = false;
 
@@ -356,14 +357,14 @@ void Bus::process_events() {
 
         if (topic_idx >= 0) {
           for (const auto &sub : subscribers_[topic_idx]) {
-            if (sub.active && sub.callback) {
-              active_subscribers.push_back(sub);
+            if (sub.active && sub.callback && active_count < MAX_SUBSCRIBERS_PER_TOPIC) {
+              active_subscribers[active_count++] = sub;
             }
           }
           should_cache = topics_[topic_idx].cache_last_message;
         }
 
-        if (active_subscribers.empty() && should_cache && topic_idx >= 0) {
+        if (active_count == 0 && should_cache && topic_idx >= 0) {
           topics_[topic_idx].cached_event = internal_event;
           ESP_LOGD(TAG, "Cached message for topic '%.*s' (no subscribers)",
                    static_cast<int>(topics_[topic_idx].get_name().length()),
@@ -373,8 +374,8 @@ void Bus::process_events() {
         xSemaphoreGiveRecursive(mutex_);
       }
 
-      for (const auto &sub : active_subscribers) {
-        sub.callback(event, sub.context);
+      for (size_t i = 0; i < active_count; ++i) {
+        active_subscribers[i].callback(event, active_subscribers[i].context);
       }
     }
   }
