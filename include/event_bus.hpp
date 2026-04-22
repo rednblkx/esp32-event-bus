@@ -133,7 +133,7 @@ private:
 
   static constexpr const char *TAG = "EventBus";
   static constexpr size_t EVENT_QUEUE_SIZE = 32;
-  static constexpr size_t EVENT_TASK_STACK_SIZE = 8192;
+  static constexpr size_t EVENT_TASK_STACK_SIZE = 4096;
   static constexpr UBaseType_t EVENT_TASK_PRIORITY = 5;
 };
 
